@@ -43,15 +43,21 @@ class MissionComputer:
             # 전체 물리 메모리 크기 계산
             if settings.get('memory_size', True):
                 try:
-                    if platform.system() == 'Darwin':
+                    system_os = platform.system()
+                    if system_os == 'Darwin':
                         # macOS: sysctl 명령어를 통해 전체 메모리 바이트 수를 가져옴
                         mem_bytes = int(subprocess.check_output(
                             ['sysctl', '-n', 'hw.memsize']).strip())
+                    elif system_os == 'Windows':
+                        # Windows: wmic 명령어를 통해 물리 메모리 총량을 바이트 단위로 가져옴
+                        output = subprocess.check_output(
+                            ['wmic', 'computersystem', 'get', 'totalphysicalmemory']).decode()
+                        mem_bytes = int(output.strip().split('\n')[1].strip())
                     else:
                         # Linux/Unix: 페이지 크기와 총 페이지 수를 곱하여 계산
                         mem_bytes = os.sysconf('SC_PAGE_SIZE') * \
                             os.sysconf('SC_PHYS_PAGES')
-                    # 바이트 단위를 GB 단위로 변환하여 저장
+                    # 바이트 단위를 GB 단위로 변환하여 저장 (1024**3 = 1GB)
                     info['memory_size'] = f'{round(mem_bytes / (1024**3), 2)} GB'
                 except Exception:
                     info['memory_size'] = 'Unknown'

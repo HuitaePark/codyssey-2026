@@ -19,12 +19,26 @@ class SystemStatusManager:
             info['cpu_cores'] = os.cpu_count()
         if settings.get('memory_size', True):
             try:
-                if platform.system() == 'Darwin':
+                system_os = platform.system()
+                if system_os == 'Darwin':
+                    # macOS: sysctl 명령어를 통해 전체 메모리 바이트(Byte) 수를 가져옵니다.
                     mem_bytes = int(subprocess.check_output(
                         ['sysctl', '-n', 'hw.memsize']).strip())
+                elif system_os == 'Windows':
+                    # Windows: wmic 명령어를 통해 물리 메모리 총량을 바이트(Byte) 단위로 가져옵니다.
+                    # 'TotalPhysicalMemory'의 값만 필터링하여 가져옵니다.
+                    output = subprocess.check_output(
+                        ['wmic', 'computersystem', 'get', 'totalphysicalmemory']).decode()
+                    # 출력 결과의 두 번째 줄에 있는 숫자 값을 추출하여 정수로 변환합니다.
+                    mem_bytes = int(output.strip().split('\n')[1].strip())
                 else:
+                    # Linux/Unix: 페이지 크기(Page Size)와 총 페이지 수를 곱하여 전체 바이트를 계산합니다.
                     mem_bytes = os.sysconf('SC_PAGE_SIZE') * \
                                 os.sysconf('SC_PHYS_PAGES')
+                
+                # [ 단위 변환 계산 상세 설명 ]
+                # 1. 1024**3 (1024의 3제곱): 바이트(Byte)를 기가바이트(GB)로 변환하기 위한 분모입니다.
+                # 2. round(..., 2): 계산된 결과를 소수점 둘째 자리까지 반올림합니다.
                 info['memory_size'] = f'{round(mem_bytes / (1024**3), 2)} GB'
             except Exception:
                 info['memory_size'] = 'Unknown'
