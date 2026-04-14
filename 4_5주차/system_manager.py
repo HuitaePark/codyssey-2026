@@ -1,6 +1,6 @@
-import platform
-import os
-import subprocess
+import platform   # 운영체제 종류, 아키텍처 등 정적 정보 수집 (표준 라이브러리)
+import os         # 시스템 부하 확인 및 CPU 코어 수 수집 (표준 라이브러리)
+import subprocess # 외부 명령어(top, vm_stat, wmic) 실행 및 결과 수집 (표준 라이브러리)
 
 class SystemStatusManager:
     '''

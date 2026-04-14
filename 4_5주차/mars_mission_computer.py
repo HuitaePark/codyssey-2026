@@ -1,8 +1,8 @@
-import json
-import time
-import datetime
-import threading
-import os
+import json       # 데이터를 보기 좋게 출력(JSON 형식) (표준 라이브러리)
+import time       # 루프 실행 간격(5초) 조절 (표준 라이브러리)
+import datetime   # 로그 출력 시 현재 시간 기록 (표준 라이브러리)
+import threading  # 키보드 입력(시스템 종료)을 별도 스레드에서 처리 (표준 라이브러리)
+import os         # 설정 파일(setting.txt) 경로 처리 (표준 라이브러리)
 from sensor import DummySensor
 from system_manager import SystemStatusManager
 

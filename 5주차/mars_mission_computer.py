@@ -1,7 +1,7 @@
-import json
-import platform
-import os
-import subprocess
+import json       # 데이터 구조를 JSON 문자열로 변환하거나 출력할 때 사용 (표준 라이브러리)
+import platform   # 운영체제의 이름, 버전, 하드웨어 아키텍처 등 정적 정보 수집 (표준 라이브러리)
+import os         # 파일 경로 조작, CPU 코어 수 확인 등 OS 기능 제어 (표준 라이브러리)
+import subprocess # 외부 시스템 명령어(top, wmic 등)를 실행하고 결과를 수집 (표준 라이브러리)
 
 
 class MissionComputer:
