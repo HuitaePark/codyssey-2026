@@ -107,7 +107,7 @@ class MissionComputer:
             if settings.get('memory_usage', True):
                 try:
                     if system_os == 'Darwin':
-                        # macOS: vm_stat 결과를 파싱하여 실제 사용 중인 페이지 비율 계산
+                        # macOS: vm_stat 결과를 파싱
                         vm = subprocess.check_output(['vm_stat']).decode()
                         vm_dict = {}
                         for line in vm.split('\n')[1:]:
@@ -116,18 +116,23 @@ class MissionComputer:
                                 # 페이지 수는 숫자로 변환 (마지막 마침표 제거)
                                 vm_dict[key.strip()] = int(val.strip().strip('.'))
                         
-                        # 하드웨어 페이지 크기 확인
+                        # 하드웨어 페이지 크기와 전체 물리 메모리 크기 확인
                         page_size = int(subprocess.check_output(
                             ['sysctl', '-n', 'hw.pagesize']).strip())
+                        total_mem_bytes = int(subprocess.check_output(
+                            ['sysctl', '-n', 'hw.memsize']).strip())
                         
-                        # Active, Wired 페이지는 사용 중 / Free 페이지는 여유 공간
-                        active = vm_dict.get('Pages active', 0) * page_size
-                        wired = vm_dict.get('Pages wired down', 0) * page_size
+                        # 가용 가능한 메모리(Free + Inactive + Speculative)
+                        # Inactive와 Speculative는 필요시 OS가 즉시 비워줄 수 있는 영역입니다.
                         free = vm_dict.get('Pages free', 0) * page_size
+                        inactive = vm_dict.get('Pages inactive', 0) * page_size
+                        speculative = vm_dict.get('Pages speculative', 0) * page_size
                         
-                        total = active + wired + free
-                        if total > 0:
-                            used_percent = ((active + wired) / total) * 100
+                        available = free + inactive + speculative
+                        used = total_mem_bytes - available
+                        
+                        if total_mem_bytes > 0:
+                            used_percent = (used / total_mem_bytes) * 100
                             load['memory_usage'] = f'{round(used_percent, 2)}%'
                         else:
                             load['memory_usage'] = 'Unknown'
