@@ -70,30 +70,35 @@ class MissionComputer:
 
     def get_mission_computer_load(self):
         '''
-        시스템의 실시간 부하(CPU 사용률, 메모리 점유율)를 측정하여 JSON 형식으로 출력
+        시스템의 실시간 부하(CPU 사용률, 메모리 점유율)를 측정하여 JSON 형식으로 출력하는 메소드
         '''
         try:
             settings = self._read_settings()
             load = {}
+            system_os = platform.system()
 
             # CPU 실시간 사용량 측정
             if settings.get('cpu_usage', True):
                 try:
-                    if platform.system() == 'Darwin':
+                    if system_os == 'Darwin':
                         # macOS: top 명령어를 1회 실행하여 user+sys 사용량을 파싱
                         top_output = subprocess.check_output(
                             ['top', '-l', '1', '-n', '0']).decode()
                         for line in top_output.split('\n'):
                             if 'CPU usage' in line:
-                                # 예: "CPU usage: 10.5% user, 15.2% sys, 74.3% idle"
                                 parts = line.split(':')
                                 usage_parts = parts[1].split(',')
                                 user = float(usage_parts[0].strip().split('%')[0])
                                 sys = float(usage_parts[1].strip().split('%')[0])
                                 load['cpu_usage'] = f'{user + sys}%'
                                 break
+                    elif system_os == 'Windows':
+                        # Windows: wmic 명령어로 현재 CPU 사용률(%) 가져오기
+                        output = subprocess.check_output(
+                            ['wmic', 'cpu', 'get', 'loadpercentage']).decode()
+                        load['cpu_usage'] = output.strip().split('\n')[1].strip() + '%'
                     else:
-                        # 기타 OS: 최근 1분간의 Load Average를 백분율로 표시 (근사치)
+                        # Linux 등: 최근 1분간의 Load Average를 백분율로 표시 (근사치)
                         load['cpu_usage'] = f'{os.getloadavg()[0] * 100}% (Load Avg)'
                 except Exception:
                     load['cpu_usage'] = 'Unknown'
@@ -101,7 +106,7 @@ class MissionComputer:
             # 메모리 실시간 사용량 측정
             if settings.get('memory_usage', True):
                 try:
-                    if platform.system() == 'Darwin':
+                    if system_os == 'Darwin':
                         # macOS: vm_stat 결과를 파싱하여 실제 사용 중인 페이지 비율 계산
                         vm = subprocess.check_output(['vm_stat']).decode()
                         vm_dict = {}
@@ -126,6 +131,31 @@ class MissionComputer:
                             load['memory_usage'] = f'{round(used_percent, 2)}%'
                         else:
                             load['memory_usage'] = 'Unknown'
+                    elif system_os == 'Windows':
+                        # Windows: 전체 물리 메모리와 가용 메모리를 가져와 계산
+                        t_out = subprocess.check_output(
+                            ['wmic', 'computersystem', 'get', 'totalphysicalmemory']).decode()
+                        f_out = subprocess.check_output(
+                            ['wmic', 'os', 'get', 'freephysicalmemory']).decode()
+                        
+                        total = int(t_out.strip().split('\n')[1].strip())
+                        free = int(f_out.strip().split('\n')[1].strip()) * 1024  # KB to Byte
+                        used_percent = ((total - free) / total) * 100
+                        load['memory_usage'] = f'{round(used_percent, 2)}%'
+                    elif system_os == 'Linux':
+                        # Linux: /proc/meminfo 파일에서 정보 추출
+                        with open('/proc/meminfo', 'r') as f:
+                            lines = f.readlines()
+                        mem_info = {}
+                        for line in lines:
+                            parts = line.split(':')
+                            if len(parts) == 2:
+                                mem_info[parts[0].strip()] = int(parts[1].strip().split()[0])
+                        total = mem_info.get('MemTotal', 0)
+                        available = mem_info.get('MemAvailable', total)
+                        if total > 0:
+                            used_percent = ((total - available) / total) * 100
+                            load['memory_usage'] = f'{round(used_percent, 2)}%'
                     else:
                         load['memory_usage'] = 'Unknown'
                 except Exception:
