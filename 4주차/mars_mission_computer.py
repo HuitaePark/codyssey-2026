@@ -1,11 +1,11 @@
-import random
-import datetime
-import json
-import time
-import threading
-import platform
-import os
-import subprocess
+import json       # 데이터 구조를 JSON 문자열로 변환하거나 출력할 때 사용 (표준 라이브러리)
+import platform   # 운영체제의 이름, 버전, 하드웨어 아키텍처 등 정적 정보 수집 (표준 라이브러리)
+import os         # 파일 경로 조작, CPU 코어 수 확인 등 OS 기능 제어 (표준 라이브러리)
+import subprocess # 외부 시스템 명령어(top, wmic 등)를 실행하고 결과를 수집 (표준 라이브러리)
+import random     # 센서 데이터 시뮬레이션을 위한 랜덤 값 생성 (표준 라이브러리)
+import datetime   # 로그 출력 시 현재 시간 기록 (표준 라이브러리)
+import time       # 루프 실행 간격 조절 (표준 라이브러리)
+import threading  # 키보드 입력 처리를 위한 멀티스레딩 (표준 라이브러리)
 
 
 class DummySensor:
@@ -58,8 +58,10 @@ class SystemStatusManager:
         시스템 정보를 수집하여 반환
         '''
         info = {}
+        system_os = platform.system()
+        
         if settings.get('os', True):
-            info['os'] = platform.system()
+            info['os'] = system_os
         if settings.get('os_version', True):
             info['os_version'] = platform.release()
         if settings.get('cpu_type', True):
@@ -68,12 +70,21 @@ class SystemStatusManager:
             info['cpu_cores'] = os.cpu_count()
         if settings.get('memory_size', True):
             try:
-                if platform.system() == 'Darwin':
+                if system_os == 'Darwin':
+                    # macOS: sysctl 명령어 활용 (바이트 단위)
                     mem_bytes = int(subprocess.check_output(
                         ['sysctl', '-n', 'hw.memsize']).strip())
+                elif system_os == 'Windows':
+                    # Windows: wmic 명령어 활용 (바이트 단위)
+                    output = subprocess.check_output(
+                        ['wmic', 'computersystem', 'get', 'totalphysicalmemory']).decode()
+                    mem_bytes = int(output.strip().split('\n')[1].strip())
                 else:
+                    # Linux/Unix: 페이지 크기 * 페이지 수
                     mem_bytes = os.sysconf('SC_PAGE_SIZE') * \
-                        os.sysconf('SC_PHYS_PAGES')
+                                os.sysconf('SC_PHYS_PAGES')
+                
+                # 바이트 단위를 GB 단위로 변환 (1024**3 = 1GB)
                 info['memory_size'] = f'{round(mem_bytes / (1024**3), 2)} GB'
             except Exception:
                 info['memory_size'] = 'Unknown'
@@ -84,9 +95,13 @@ class SystemStatusManager:
         실시간 부하 정보를 수집하여 반환
         '''
         load = {}
+        system_os = platform.system()
+
+        # CPU 사용률 측정
         if settings.get('cpu_usage', True):
             try:
-                if platform.system() == 'Darwin':
+                if system_os == 'Darwin':
+                    # macOS: top 명령어로 실시간 사용량 확인
                     top_output = subprocess.check_output(
                         ['top', '-l', '1', '-n', '0']).decode()
                     for line in top_output.split('\n'):
@@ -97,28 +112,58 @@ class SystemStatusManager:
                             sys = float(usage_parts[1].strip().split('%')[0])
                             load['cpu_usage'] = f'{user + sys}%'
                             break
+                elif system_os == 'Windows':
+                    # Windows: wmic 명령어로 사용률 가져오기
+                    output = subprocess.check_output(
+                        ['wmic', 'cpu', 'get', loadpercentage]).decode()
+                    load['cpu_usage'] = output.strip().split('\n')[1].strip() + '%'
                 else:
+                    # Linux 등: Load Average 활용
                     load['cpu_usage'] = f'{os.getloadavg()[0] * 100}% (Load Avg)'
             except Exception:
                 load['cpu_usage'] = 'Unknown'
 
+        # 메모리 사용률 측정
         if settings.get('memory_usage', True):
             try:
-                if platform.system() == 'Darwin':
+                if system_os == 'Darwin':
+                    # macOS: 실제 가용량(Free + Inactive + Speculative) 기반 계산
                     vm = subprocess.check_output(['vm_stat']).decode()
                     vm_dict = {}
                     for line in vm.split('\n')[1:]:
                         if ':' in line:
                             key, val = line.split(':')
                             vm_dict[key.strip()] = int(val.strip().strip('.'))
+                    
                     page_size = int(subprocess.check_output(
                         ['sysctl', '-n', 'hw.pagesize']).strip())
-                    active = vm_dict.get('Pages active', 0) * page_size
-                    wired = vm_dict.get('Pages wired down', 0) * page_size
+                    total_mem_bytes = int(subprocess.check_output(
+                        ['sysctl', '-n', 'hw.memsize']).strip())
+                    
                     free = vm_dict.get('Pages free', 0) * page_size
-                    total = active + wired + free
-                    used_percent = ((active + wired) / total) * 100
-                    load['memory_usage'] = f'{round(used_percent, 2)}%'
+                    inactive = vm_dict.get('Pages inactive', 0) * page_size
+                    speculative = vm_dict.get('Pages speculative', 0) * page_size
+                    
+                    available = free + inactive + speculative
+                    used = total_mem_bytes - available
+                    load['memory_usage'] = f'{round((used / total_mem_bytes) * 100, 2)}%'
+                elif system_os == 'Windows':
+                    # Windows: (전체 - 가용) / 전체 계산
+                    t_out = subprocess.check_output(
+                        ['wmic', 'computersystem', 'get', 'totalphysicalmemory']).decode()
+                    f_out = subprocess.check_output(
+                        ['wmic', 'os', 'get', 'freephysicalmemory']).decode()
+                    total = int(t_out.strip().split('\n')[1].strip())
+                    free = int(f_out.strip().split('\n')[1].strip()) * 1024
+                    load['memory_usage'] = f'{round(((total - free) / total) * 100, 2)}%'
+                elif system_os == 'Linux':
+                    # Linux: /proc/meminfo 활용
+                    with open('/proc/meminfo', 'r') as f:
+                        lines = f.readlines()
+                    mem_info = {l.split(':')[0].strip(): int(l.split(':')[1].strip().split()[0]) for l in lines}
+                    total = mem_info.get('MemTotal', 0)
+                    available = mem_info.get('MemAvailable', total)
+                    load['memory_usage'] = f'{round(((total - available) / total) * 100, 2)}%'
                 else:
                     load['memory_usage'] = 'Unknown'
             except Exception:
